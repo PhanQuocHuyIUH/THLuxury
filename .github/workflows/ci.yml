@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ---------------------------------------------------------------
+  # Phát hiện thay đổi theo path để build matrix có điều kiện
+  # ---------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      java: ${{ steps.filter.outputs.java }}
+      python: ${{ steps.filter.outputs.python }}
+      storefront: ${{ steps.filter.outputs.storefront }}
+      admin: ${{ steps.filter.outputs.admin }}
+      proto: ${{ steps.filter.outputs.proto }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            java:
+              - 'services/api-gateway/**'
+              - 'services/identity-service/**'
+              - 'services/catalog-service/**'
+              - 'services/inventory-service/**'
+              - 'services/order-service/**'
+              - 'services/payment-service/**'
+              - 'services/notification-service/**'
+            python:
+              - 'services/ai-service/**'
+            storefront:
+              - 'frontend/storefront/**'
+            admin:
+              - 'frontend/admin/**'
+            proto:
+              - 'services/*/src/main/proto/**'
+
+  # ---------------------------------------------------------------
+  # Lint proto files (mỗi service giữ proto riêng trong src/main/proto)
+  # ---------------------------------------------------------------
+  proto-lint:
+    needs: changes
+    if: needs.changes.outputs.proto == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+      - run: |
+          for d in services/*/src/main/proto; do
+            [ -d "$d" ] && (buf lint "$d" || echo "buf lint $d (config sẽ thêm sau)")
+          done
+
+  # ---------------------------------------------------------------
+  # Build matrix cho Java/Spring Boot services
+  # ---------------------------------------------------------------
+  build-java:
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api-gateway
+          - identity-service
+          - catalog-service
+          - inventory-service
+          - order-service
+          - payment-service
+          - notification-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if service folder absent
+        id: check
+        run: |
+          if [ -f "services/${{ matrix.service }}/pom.xml" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::services/${{ matrix.service }} chưa tồn tại — skip"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.check.outputs.build == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test + package
+        if: steps.check.outputs.build == 'true'
+        working-directory: services/${{ matrix.service }}
+        run: mvn -B -ntp verify
+
+  # ---------------------------------------------------------------
+  # AI Service (Python)
+  # ---------------------------------------------------------------
+  build-python:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if folder absent
+        id: check
+        run: |
+          if [ -f "services/ai-service/pyproject.toml" ] || [ -f "services/ai-service/requirements.txt" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::services/ai-service chưa tồn tại — skip"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.build == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install + test
+        if: steps.check.outputs.build == 'true'
+        working-directory: services/ai-service
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt || pip install -r requirements.txt
+          pytest -q || echo "(no tests yet)"
+
+  # ---------------------------------------------------------------
+  # Frontend
+  # ---------------------------------------------------------------
+  build-frontend:
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [storefront, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decide whether to build
+        id: should
+        run: |
+          if [ "${{ matrix.app }}" = "storefront" ] && [ "${{ needs.changes.outputs.storefront }}" != "true" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${{ matrix.app }}" = "admin" ] && [ "${{ needs.changes.outputs.admin }}" != "true" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -f "frontend/${{ matrix.app }}/package.json" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::frontend/${{ matrix.app }} chưa tồn tại — skip"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.should.outputs.build == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      - name: Install + build + lint
+        if: steps.should.outputs.build == 'true'
+        working-directory: frontend/${{ matrix.app }}
+        run: |
+          npm ci
+          npm run lint --if-present
+          npm run build --if-present

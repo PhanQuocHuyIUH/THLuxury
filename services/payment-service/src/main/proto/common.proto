@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package thluxury.common;
+
+option java_multiple_files = true;
+option java_package = "com.thluxury.proto.common";
+option java_outer_classname = "CommonProto";
+
+// ============================================================
+// Common message types dùng chung cho mọi gRPC service
+// ============================================================
+
+// Wrapper UUID dạng string — Postgres uuid serialize sang đây.
+message Uuid {
+  string value = 1;
+}
+
+// Standard error info trả về trong response khi không dùng status code.
+message ErrorInfo {
+  string code = 1;        // INVENTORY_INSUFFICIENT, ORDER_NOT_FOUND, ...
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+// Money — luôn lưu dạng integer (VND không có phần lẻ).
+message Money {
+  int64 amount = 1;       // VND
+  string currency = 2;    // "VND"
+}
+
+// Reference đến order (dùng trong Inventory + Payment).
+message OrderRef {
+  string order_id = 1;
+  string ma_dh = 2;
+}

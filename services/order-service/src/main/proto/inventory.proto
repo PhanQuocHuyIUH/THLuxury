@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package thluxury.inventory;
+
+import "common.proto";
+
+option java_multiple_files = true;
+option java_package = "com.thluxury.proto.inventory";
+option java_outer_classname = "InventoryProto";
+
+// ============================================================
+// Inventory Service — gRPC contract
+// Server: inventory-service (port 9083)
+// Clients: order-service (Saga orchestrator)
+// ============================================================
+
+service InventoryService {
+  // Bước trước checkout (optional, FE dùng để hiển thị available).
+  rpc CheckAvailability (CheckRequest) returns (CheckResponse);
+
+  // Bước 2 trong Saga: tăng reserved_quantity. Atomic per branch.
+  rpc ReserveStock (ReserveRequest) returns (ReserveResponse);
+
+  // Sau PAYMENT_SUCCESS: chuyển reserved → giảm quantity thực.
+  rpc CommitStock (CommitRequest) returns (CommitResponse);
+
+  // Compensating transaction: giải phóng reserved khi Payment fail/Order cancel.
+  rpc ReleaseStock (ReleaseRequest) returns (ReleaseResponse);
+}
+
+message InventoryItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  string branch_id = 3;   // optional cho CheckAvailability; bắt buộc cho Reserve/Commit/Release
+}
+
+// ---------------- CheckAvailability ----------------
+message CheckRequest {
+  repeated InventoryItem items = 1;
+}
+message AvailabilityResult {
+  string product_id = 1;
+  string branch_id = 2;
+  int32 available = 3;     // quantity - reserved_quantity
+  bool sufficient = 4;
+}
+message CheckResponse {
+  repeated AvailabilityResult results = 1;
+}
+
+// ---------------- ReserveStock ----------------
+message ReserveRequest {
+  thluxury.common.OrderRef order = 1;
+  repeated InventoryItem items = 2;
+  // Nếu strict_branch=true, KHÔNG được phép tự chọn branch khác.
+  // Nếu false và branch_id rỗng, Inventory sẽ tự pick branch còn hàng.
+  bool strict_branch = 3;
+}
+message ReserveItemResult {
+  string product_id = 1;
+  string branch_id = 2;    // branch thực tế được reserve
+  int32 reserved = 3;
+  bool success = 4;
+  string error_code = 5;   // INSUFFICIENT_STOCK, PRODUCT_NOT_FOUND, ...
+}
+message ReserveResponse {
+  bool success = 1;        // true nếu ALL items reserved thành công
+  repeated ReserveItemResult results = 2;
+  thluxury.common.ErrorInfo error = 3;
+}
+
+// ---------------- CommitStock ----------------
+message CommitRequest {
+  thluxury.common.OrderRef order = 1;
+}
+message CommitResponse {
+  bool success = 1;
+  thluxury.common.ErrorInfo error = 2;
+}
+
+// ---------------- ReleaseStock (compensating) ----------------
+message ReleaseRequest {
+  thluxury.common.OrderRef order = 1;
+  string reason = 2;       // PAYMENT_FAILED, ORDER_CANCELLED, TIMEOUT
+}
+message ReleaseResponse {
+  bool success = 1;
+  thluxury.common.ErrorInfo error = 2;
+}

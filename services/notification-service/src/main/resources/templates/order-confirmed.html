@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Xác nhận đơn hàng</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+        <h2 style="text-align: center; color: #d4af37;">THLuxury</h2>
+        <p>Xin chào <strong th:text="${fullName}">Quý khách</strong>,</p>
+        <p>Cảm ơn bạn đã đặt hàng tại THLuxury. Đơn hàng <strong><span th:text="${maDh}"></span></strong> của bạn đã được xác nhận thành công.</p>
+        <p>Tổng giá trị đơn hàng: <strong th:text="${total}">0</strong> VND</p>
+        <p>Bạn có thể theo dõi chi tiết đơn hàng tại liên kết sau:</p>
+        <p style="text-align: center;">
+            <a th:href="${orderUrl}" style="display: inline-block; padding: 10px 20px; background-color: #d4af37; color: #fff; text-decoration: none; border-radius: 3px;">Xem chi tiết đơn hàng</a>
+        </p>
+        <p>Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ với chúng tôi qua email support@thluxury.local.</p>
+        <p>Trân trọng,<br>Đội ngũ THLuxury</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,52 @@
+html, body {
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  background-color: #fafafa;
+  color: #222;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.thluxury-link {
+  color: #b8860b;
+}
+
+.thluxury-link:hover {
+  color: #8b6914;
+}
+
+.btn-thluxury {
+  background-color: #f2e3bf;
+  border-color: #f2e3bf;
+  color: #333;
+  font-weight: bold;
+  border-radius: 20px;
+  transition: all 0.3s ease;
+}
+
+.btn-thluxury:hover {
+  background-color: #e6d7a3;
+  color: #333;
+}
+
+.product-card {
+  border-radius: 20px;
+  transition: transform 0.3s ease;
+  overflow: hidden;
+}
+
+.product-card:hover {
+  transform: scale(1.02);
+}
+
+.breadcrumb-wrapper {
+  margin: 1rem 0;
+}

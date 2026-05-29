@@ -1,0 +1,442 @@
+# ============================================================
+# THLuxury — Core infrastructure stack
+# Bao gồm: Postgres, Redis, RabbitMQ, MailHog
+# Application services (api-gateway, identity, ...) sẽ được thêm
+# vào các sprint kế tiếp dưới dạng override hoặc bổ sung trực tiếp.
+# ============================================================
+
+name: thluxury
+
+networks:
+  thluxury-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  identity-secrets:
+
+services:
+  # ---------------------------------------------------------------
+  # PostgreSQL — 1 instance, 5 schemas (identity/catalog/inventory/order/payment)
+  # ---------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: thluxury-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      # Forward để 03-set-passwords.sh dùng được
+      DB_PASSWORD_IDENTITY: ${DB_PASSWORD_IDENTITY:-svc_identity_pw}
+      DB_PASSWORD_CATALOG: ${DB_PASSWORD_CATALOG:-svc_catalog_pw}
+      DB_PASSWORD_INVENTORY: ${DB_PASSWORD_INVENTORY:-svc_inventory_pw}
+      DB_PASSWORD_ORDER: ${DB_PASSWORD_ORDER:-svc_order_pw}
+      DB_PASSWORD_PAYMENT: ${DB_PASSWORD_PAYMENT:-svc_payment_pw}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-thluxury}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Redis — cache, refresh tokens, cart, AI chat sessions
+  # ---------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: thluxury-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - "256mb"
+      - --maxmemory-policy
+      - allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # RabbitMQ — async event bus (catalog/order/payment/auth/chat events)
+  # ---------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: thluxury-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # MailHog — SMTP fake + Web UI để xem email Notification Service gửi ra
+  # ---------------------------------------------------------------
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: thluxury-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI: http://localhost:8025
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Identity Service — auth, users, branches, JWT
+  # ---------------------------------------------------------------
+  identity-service:
+    build:
+      context: ../services/identity-service
+      dockerfile: Dockerfile
+    image: thluxury/identity-service:0.1.0
+    container_name: thluxury-identity
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      DB_PASSWORD_IDENTITY: ${DB_PASSWORD_IDENTITY:-svc_identity_pw}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      JWT_ISSUER: ${JWT_ISSUER:-https://thluxury.local}
+      JWT_PRIVATE_KEY_PATH: /secrets/jwt-private.pem
+      JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+      JWT_ACCESS_TTL_MIN: ${JWT_ACCESS_TTL_MIN:-15}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-7}
+    ports:
+      - "8081:8081"
+    volumes:
+      - identity-secrets:/secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Catalog Service — CQRS write + read model + Redis cache
+  # ---------------------------------------------------------------
+  catalog-service:
+    build:
+      context: ../services/catalog-service
+      dockerfile: Dockerfile
+    image: thluxury/catalog-service:0.1.0
+    container_name: thluxury-catalog
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      DB_PASSWORD_CATALOG: ${DB_PASSWORD_CATALOG:-svc_catalog_pw}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      JWKS_URI: http://identity-service:8081/api/auth/.well-known/jwks.json
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Payment Service — Mock + Stripe optional, gRPC server
+  # ---------------------------------------------------------------
+  payment-service:
+    build:
+      context: ..
+      dockerfile: services/payment-service/Dockerfile
+    image: thluxury/payment-service:0.1.0
+    container_name: thluxury-payment
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      DB_PASSWORD_PAYMENT: ${DB_PASSWORD_PAYMENT:-svc_payment_pw}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      JWKS_URI: http://identity-service:8081/api/auth/.well-known/jwks.json
+      PAYMENT_MOCK_FAILURE_RATE: ${PAYMENT_MOCK_FAILURE_RATE:-0.2}
+      PAYMENT_MOCK_MAX_DELAY_MS: ${PAYMENT_MOCK_MAX_DELAY_MS:-1500}
+      STRIPE_ENABLED: ${STRIPE_ENABLED:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    ports:
+      - "8085:8085"
+      - "9085:9085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Order Service — Saga Orchestrator + Event Sourcing
+  # ---------------------------------------------------------------
+  order-service:
+    build:
+      context: ..
+      dockerfile: services/order-service/Dockerfile
+    image: thluxury/order-service:0.1.0
+    container_name: thluxury-order
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      DB_PASSWORD_ORDER: ${DB_PASSWORD_ORDER:-svc_order_pw}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      JWKS_URI: http://identity-service:8081/api/auth/.well-known/jwks.json
+      CATALOG_BASE_URL: http://catalog-service:8082
+      INVENTORY_GRPC_HOST: inventory-service
+      INVENTORY_GRPC_PORT: 9083
+      PAYMENT_GRPC_HOST: payment-service
+      PAYMENT_GRPC_PORT: 9085
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # API Gateway — routing, JWT verification (JWKS), CORS
+  # ---------------------------------------------------------------
+  api-gateway:
+    build:
+      context: ../services/api-gateway
+      dockerfile: Dockerfile
+    image: thluxury/api-gateway:0.1.0
+    container_name: thluxury-gateway
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      IDENTITY_URI: http://identity-service:8081
+      CATALOG_URI: http://catalog-service:8082
+      INVENTORY_URI: http://inventory-service:8083
+      ORDER_URI: http://order-service:8084
+      PAYMENT_URI: http://payment-service:8085
+      AI_URI: http://ai-service:8087
+      JWKS_URI: http://identity-service:8081/api/auth/.well-known/jwks.json
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Inventory Service — gRPC + REST
+  # ---------------------------------------------------------------
+  inventory-service:
+    build:
+      context: ..
+      dockerfile: services/inventory-service/Dockerfile
+    image: thluxury/inventory-service:0.1.0
+    container_name: thluxury-inventory
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      DB_PASSWORD_INVENTORY: ${DB_PASSWORD_INVENTORY:-svc_inventory_pw}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      JWKS_URI: http://identity-service:8081/api/auth/.well-known/jwks.json
+      CATALOG_BASE_URL: http://catalog-service:8082
+      IDENTITY_BASE_URL: http://identity-service:8081
+      INVENTORY_SEED_ENABLED: ${INVENTORY_SEED_ENABLED:-true}
+    ports:
+      - "8083:8083"
+      - "9083:9083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+
+  # ---------------------------------------------------------------
+  # Notification Service � Email via MailHog
+  # ---------------------------------------------------------------
+  notification-service:
+    build:
+      context: ../services/notification-service
+      dockerfile: Dockerfile
+    image: thluxury/notification-service:0.1.0
+    container_name: thluxury-notification
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-thluxury}
+      DB_PASSWORD_ORDER: ${DB_PASSWORD_ORDER:-svc_order_pw}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      MAIL_FROM: ${MAIL_FROM:-no-reply@thluxury.local}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "8086:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # AI Service � Recommendations, Similarity, Chatbot
+  # ---------------------------------------------------------------
+  ai-service:
+    build:
+      context: ../services/ai-service
+      dockerfile: Dockerfile
+    image: thluxury/ai-service:0.1.0
+    container_name: thluxury-ai
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:-admin}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      CATALOG_BASE_URL: http://catalog-service:8082
+    ports:
+      - "8087:8087"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Storefront — Next.js 14 App Router (public + customer)
+  # ---------------------------------------------------------------
+  storefront:
+    build:
+      context: ../frontend/storefront
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    image: thluxury/storefront:0.1.0
+    container_name: thluxury-storefront
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      # URL nội bộ cho fetch phía server (Server Components). localhost trong
+      # container không trỏ tới gateway, nên phải dùng DNS của mạng Docker.
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://api-gateway:8080}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    networks: [thluxury-net]
+
+  # ---------------------------------------------------------------
+  # Admin Dashboard — Vite + React (nginx serve dist)
+  # ---------------------------------------------------------------
+  admin:
+    build:
+      context: ../frontend/admin
+      dockerfile: Dockerfile
+    image: thluxury/admin:0.1.0
+    container_name: thluxury-admin
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api-gateway
+    networks: [thluxury-net]

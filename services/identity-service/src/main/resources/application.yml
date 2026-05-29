@@ -1,0 +1,81 @@
+server:
+  port: 8081
+  forward-headers-strategy: framework
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: identity-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:thluxury}?currentSchema=identity
+    username: svc_identity
+    password: ${DB_PASSWORD_IDENTITY:svc_identity_pw}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: identity
+        jdbc.time_zone: UTC
+    open-in-view: false
+  flyway:
+    enabled: true
+    schemas: identity
+    default-schema: identity
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:admin}
+    password: ${RABBITMQ_DEFAULT_PASS:admin}
+  jackson:
+    default-property-inclusion: non_null
+
+thluxury:
+  jwt:
+    issuer: ${JWT_ISSUER:https://thluxury.local}
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:/secrets/jwt-private.pem}
+    public-key-path:  ${JWT_PUBLIC_KEY_PATH:/secrets/jwt-public.pem}
+    access-ttl-minutes: ${JWT_ACCESS_TTL_MIN:15}
+    refresh-ttl-days:   ${JWT_REFRESH_TTL_DAYS:7}
+  oauth:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      # Khi để rỗng, verify chỉ kiểm cấu trúc + iss/aud từ tokeninfo của Google (dev/demo).
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  metrics:
+    tags:
+      service: identity-service
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.thluxury: DEBUG
+    org.hibernate.SQL: WARN

@@ -1,0 +1,79 @@
+server:
+  port: 8085
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:thluxury}?currentSchema=payment
+    username: svc_payment
+    password: ${DB_PASSWORD_PAYMENT:svc_payment_pw}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: payment
+        jdbc.time_zone: UTC
+    open-in-view: false
+  flyway:
+    enabled: true
+    schemas: payment
+    default-schema: payment
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:admin}
+    password: ${RABBITMQ_DEFAULT_PASS:admin}
+  jackson:
+    default-property-inclusion: non_null
+
+grpc:
+  server:
+    port: 9085
+
+jwt:
+  jwks-uri: ${JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+
+thluxury:
+  payment:
+    mock:
+      failure-rate: ${PAYMENT_MOCK_FAILURE_RATE:0.2}
+      max-delay-ms: ${PAYMENT_MOCK_MAX_DELAY_MS:1500}
+    stripe:
+      enabled: ${STRIPE_ENABLED:false}
+      secret-key: ${STRIPE_SECRET_KEY:}
+      webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      service: payment-service
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.thluxury: DEBUG
+    org.hibernate.SQL: WARN

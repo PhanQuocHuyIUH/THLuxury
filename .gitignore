@@ -1,0 +1,108 @@
+# ---------- Env / Secrets ----------
+.env
+.env.local
+.env.*.local
+infra/.env
+*.pem
+*.p12
+*.jks
+secrets/
+*.local
+
+# ---------- AI / Assistant ----------
+.claude/
+.cursor/
+
+# ---------- Java / Maven ----------
+target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ---------- IDE ----------
+.idea/
+*.iml
+.vscode/
+!.vscode/extensions.json
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+.history/
+*.sublime-project
+*.sublime-workspace
+
+# ---------- Node / Frontend ----------
+node_modules/
+.next/
+out/
+dist/
+build/
+.cache/
+.parcel-cache/
+.turbo/
+.vite/
+coverage/
+.nyc_output/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+.stylelintcache
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.ipynb_checkpoints/
+
+# ---------- Docker ----------
+.docker-data/
+*/data/pgdata/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Project-specific ----------
+5TLuxury/
+docs/
+frontend/storefront/public/products/
+
+# Flyway local migrations cache
+*.flyway
+
+# Logs
+logs/
+*.log
+

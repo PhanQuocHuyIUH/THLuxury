@@ -1,0 +1,17 @@
+{
+  "tenSp": "Vòng Cẩm Thạch Cao Cấp",
+  "loaiSp": "Vòng tay",
+  "giaBanDau": 7500000,
+  "giaGiamGia": 6800000,
+  "trongLuong": 5.2,
+  "hamLuong": "18K",
+  "loaiDa": "Cẩm thạch",
+  "mauDa": "Xanh ngọc",
+  "gioiTinh": "Nữ",
+  "thuongHieu": "THLuxury",
+  "description": "Vòng cẩm thạch cao cấp tự nhiên màu xanh ngọc, viền vàng 18K.",
+  "images": [
+    { "imageUrl": "/products/test-1.png", "sortOrder": 0 },
+    { "imageUrl": "/products/test-2.png", "sortOrder": 1 }
+  ]
+}

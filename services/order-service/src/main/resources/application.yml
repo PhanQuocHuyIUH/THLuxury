@@ -1,0 +1,116 @@
+server:
+  port: 8084
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:thluxury}?currentSchema=order
+    username: svc_order
+    password: ${DB_PASSWORD_ORDER:svc_order_pw}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # NOTE: KHÔNG set default_schema — `order` là reserved word PG.
+        # Hibernate sẽ phát hành unqualified table; Postgres dùng search_path
+        # (`order, public` đã set ở role svc_order) để resolve.
+        jdbc.time_zone: UTC
+    open-in-view: false
+  flyway:
+    enabled: true
+    # Flyway sẽ tự quote khi cần; tên schema giữ nguyên `order`.
+    schemas: order
+    default-schema: order
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:admin}
+    password: ${RABBITMQ_DEFAULT_PASS:admin}
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 1s
+          max-attempts: 3
+          multiplier: 2
+        acknowledge-mode: auto
+        prefetch: 4
+  jackson:
+    default-property-inclusion: non_null
+
+grpc:
+  client:
+    inventory:
+      address: static://${INVENTORY_GRPC_HOST:inventory-service}:${INVENTORY_GRPC_PORT:9083}
+      negotiation-type: plaintext
+    payment:
+      address: static://${PAYMENT_GRPC_HOST:payment-service}:${PAYMENT_GRPC_PORT:9085}
+      negotiation-type: plaintext
+
+jwt:
+  jwks-uri: ${JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+
+thluxury:
+  order:
+    catalog-base-url: ${CATALOG_BASE_URL:http://catalog-service:8082}
+    cart-ttl-seconds: 1209600   # 14 ngày
+    saga:
+      reserve-strict-branch: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      payment:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+  retry:
+    instances:
+      payment:
+        max-attempts: 2
+        wait-duration: 500ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, circuitbreakers
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      service: order-service
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.thluxury: DEBUG
+    org.hibernate.SQL: WARN

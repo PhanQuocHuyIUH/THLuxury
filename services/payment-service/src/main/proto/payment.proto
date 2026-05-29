@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package thluxury.payment;
+
+import "common.proto";
+
+option java_multiple_files = true;
+option java_package = "com.thluxury.proto.payment";
+option java_outer_classname = "PaymentProto";
+
+// ============================================================
+// Payment Service — gRPC contract
+// Server: payment-service (port 9085)
+// Clients: order-service
+// ============================================================
+
+service PaymentService {
+  // Sync charge: được gọi trong Saga ngay sau khi Inventory reserve OK.
+  rpc Charge (ChargeRequest) returns (ChargeResponse);
+
+  // Refund cho admin/manager khi cancel đơn đã thanh toán.
+  rpc Refund (RefundRequest) returns (RefundResponse);
+
+  // Tra cứu trạng thái payment (debug/admin).
+  rpc GetPayment (GetPaymentRequest) returns (GetPaymentResponse);
+}
+
+enum PaymentMethod {
+  PAYMENT_METHOD_UNSPECIFIED = 0;
+  COD = 1;
+  BANK_TRANSFER = 2;
+  CREDIT_CARD = 3;
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  SUCCESS = 2;
+  FAILED = 3;
+  REFUNDED = 4;
+}
+
+// ---------------- Charge ----------------
+message ChargeRequest {
+  thluxury.common.OrderRef order = 1;
+  thluxury.common.Money amount = 2;
+  PaymentMethod method = 3;
+  string customer_id = 4;
+  // Khi method=CREDIT_CARD, FE đã tạo PaymentIntent ở Stripe và đẩy id xuống.
+  string client_token = 5;
+  string idempotency_key = 6;
+}
+message ChargeResponse {
+  string payment_id = 1;
+  PaymentStatus status = 2;
+  string gateway_ref = 3;       // Stripe PaymentIntent id hoặc mock-ref
+  thluxury.common.ErrorInfo error = 4;
+}
+
+// ---------------- Refund ----------------
+message RefundRequest {
+  string payment_id = 1;
+  thluxury.common.Money amount = 2;   // null/zero = full refund
+  string reason = 3;
+}
+message RefundResponse {
+  bool success = 1;
+  PaymentStatus new_status = 2;
+  thluxury.common.ErrorInfo error = 3;
+}
+
+// ---------------- GetPayment ----------------
+message GetPaymentRequest {
+  oneof key {
+    string payment_id = 1;
+    string order_id = 2;
+  }
+}
+message GetPaymentResponse {
+  string payment_id = 1;
+  string order_id = 2;
+  PaymentMethod method = 3;
+  PaymentStatus status = 4;
+  thluxury.common.Money amount = 5;
+  string gateway_ref = 6;
+  int32 attempt_count = 7;
+  int64 created_at_epoch = 8;
+}

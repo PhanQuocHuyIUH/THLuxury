@@ -1,0 +1,206 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    web-application-type: reactive
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+      globalcors:
+        cors-configurations:
+          "[/**]":
+            allowedOriginPatterns:
+              - "http://localhost:3000"
+              - "http://localhost:5173"
+              - "http://127.0.0.1:*"
+            allowedMethods: ["GET","POST","PUT","DELETE","PATCH","OPTIONS"]
+            allowedHeaders: ["*"]
+            exposedHeaders: ["Location","X-Total-Count"]
+            allowCredentials: true
+            maxAge: 3600
+      routes:
+        # ---------- Identity Service ----------
+        - id: identity-auth
+          uri: ${IDENTITY_URI:http://identity-service:8081}
+          predicates:
+            - Path=/api/auth/**
+        - id: identity-users
+          uri: ${IDENTITY_URI:http://identity-service:8081}
+          predicates:
+            - Path=/api/users/**
+        - id: identity-admin
+          uri: ${IDENTITY_URI:http://identity-service:8081}
+          predicates:
+            - Path=/api/admin/users/**, /api/admin/branches/**
+        - id: identity-branches
+          uri: ${IDENTITY_URI:http://identity-service:8081}
+          predicates:
+            - Path=/api/branches/**
+
+        # ---------- Catalog Service ----------
+        - id: catalog-products
+          uri: ${CATALOG_URI:http://catalog-service:8082}
+          predicates:
+            - Path=/api/products/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: catalogCb
+                fallbackUri: forward:/__fallback/catalog
+        - id: catalog-categories
+          uri: ${CATALOG_URI:http://catalog-service:8082}
+          predicates:
+            - Path=/api/categories/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: catalogCb
+                fallbackUri: forward:/__fallback/catalog
+
+        # ---------- Inventory Service ----------
+        - id: inventory-api
+          uri: ${INVENTORY_URI:http://inventory-service:8083}
+          predicates:
+            - Path=/api/inventory/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: inventoryCb
+                fallbackUri: forward:/__fallback/inventory
+
+        # ---------- Order Service ----------
+        # Checkout: rate-limit 5 burst / user (plan: ~5 req/phút) + CB.
+        - id: order-checkout
+          uri: ${ORDER_URI:http://order-service:8084}
+          predicates:
+            - Path=/api/orders/checkout
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@userOrIpKeyResolver}"
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 5
+                redis-rate-limiter.requestedTokens: 1
+            - name: CircuitBreaker
+              args:
+                name: orderCb
+                fallbackUri: forward:/__fallback/order
+        - id: order-cart
+          uri: ${ORDER_URI:http://order-service:8084}
+          predicates:
+            - Path=/api/cart/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: orderCb
+                fallbackUri: forward:/__fallback/order
+        - id: order-api
+          uri: ${ORDER_URI:http://order-service:8084}
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: orderCb
+                fallbackUri: forward:/__fallback/order
+        - id: order-vouchers
+          uri: ${ORDER_URI:http://order-service:8084}
+          predicates:
+            - Path=/api/vouchers/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: orderCb
+                fallbackUri: forward:/__fallback/order
+
+        # ---------- Payment Service ----------
+        - id: payment-api
+          uri: ${PAYMENT_URI:http://payment-service:8085}
+          predicates:
+            - Path=/api/payments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: paymentCb
+                fallbackUri: forward:/__fallback/payment
+
+        # ---------- AI Service ----------
+        # AI: rate-limit 10 burst / user (plan: ~10 req/phút) + CB.
+        - id: ai-api
+          uri: ${AI_URI:http://ai-service:8087}
+          predicates:
+            - Path=/api/ai/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@userOrIpKeyResolver}"
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 1
+            - name: CircuitBreaker
+              args:
+                name: aiCb
+                fallbackUri: forward:/__fallback/ai
+
+thluxury:
+  gateway:
+    jwks-uri: ${JWKS_URI:http://identity-service:8081/api/auth/.well-known/jwks.json}
+
+# Circuit breaker mặc định cho mọi route group (plan §6.2): sliding 20, threshold 50%, open 30s, timeout 5s.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      catalogCb: { base-config: default }
+      inventoryCb: { base-config: default }
+      orderCb: { base-config: default }
+      paymentCb: { base-config: default }
+      aiCb: { base-config: default }
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 5s
+        cancel-running-future: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, gateway, circuitbreakers, ratelimiters
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      service: api-gateway
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.thluxury: DEBUG
+    org.springframework.cloud.gateway: INFO

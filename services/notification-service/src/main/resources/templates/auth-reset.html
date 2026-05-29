@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Đặt lại mật khẩu</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+        <h2 style="text-align: center; color: #d4af37;">THLuxury</h2>
+        <p>Xin chào,</p>
+        <p>Chúng tôi đã nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn tại THLuxury.</p>
+        <p>Vui lòng nhấn vào nút bên dưới để đặt lại mật khẩu của bạn:</p>
+        <p style="text-align: center;">
+            <a th:href="${resetUrl}" style="display: inline-block; padding: 10px 20px; background-color: #d4af37; color: #fff; text-decoration: none; border-radius: 3px;">Đặt lại mật khẩu</a>
+        </p>
+        <p>Liên kết này sẽ hết hạn sau 30 phút. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+        <p>Trân trọng,<br>Đội ngũ THLuxury</p>
+    </div>
+</body>
+</html>

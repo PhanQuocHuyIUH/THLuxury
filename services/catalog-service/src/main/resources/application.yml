@@ -1,0 +1,79 @@
+server:
+  port: 8082
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: catalog-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:thluxury}?currentSchema=catalog
+    username: svc_catalog
+    password: ${DB_PASSWORD_CATALOG:svc_catalog_pw}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: catalog
+        jdbc.time_zone: UTC
+    open-in-view: false
+  flyway:
+    enabled: true
+    schemas: catalog
+    default-schema: catalog
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:admin}
+    password: ${RABBITMQ_DEFAULT_PASS:admin}
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 1s
+          max-attempts: 3
+          multiplier: 2
+        acknowledge-mode: auto
+        prefetch: 4
+  jackson:
+    default-property-inclusion: non_null
+
+thluxury:
+  security:
+    jwks-uri: ${JWKS_URI:http://identity-service:8081/api/auth/.well-known/jwks.json}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      service: catalog-service
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.thluxury: DEBUG
+    org.hibernate.SQL: WARN

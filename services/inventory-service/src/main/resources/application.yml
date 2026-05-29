@@ -1,0 +1,88 @@
+server:
+  port: 8083
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:thluxury}?currentSchema=inventory
+    username: svc_inventory
+    password: ${DB_PASSWORD_INVENTORY:svc_inventory_pw}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: inventory
+        jdbc.time_zone: UTC
+    open-in-view: false
+  flyway:
+    enabled: true
+    schemas: inventory
+    default-schema: inventory
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:admin}
+    password: ${RABBITMQ_DEFAULT_PASS:admin}
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 1s
+          max-attempts: 3
+          multiplier: 2
+        acknowledge-mode: auto
+        prefetch: 4
+  jackson:
+    default-property-inclusion: non_null
+
+grpc:
+  server:
+    port: 9083
+
+jwt:
+  jwks-uri: ${JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+
+thluxury:
+  inventory:
+    seed:
+      enabled: ${INVENTORY_SEED_ENABLED:true}
+      min: 5
+      max: 30
+    catalog-base-url: ${CATALOG_BASE_URL:http://catalog-service:8082}
+    identity-base-url: ${IDENTITY_BASE_URL:http://identity-service:8081}
+    low-stock-threshold-default: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      service: inventory-service
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.thluxury: DEBUG
+    org.hibernate.SQL: WARN

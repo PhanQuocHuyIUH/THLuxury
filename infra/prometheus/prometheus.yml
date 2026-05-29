@@ -1,0 +1,43 @@
+# Prometheus config — scrape /actuator/prometheus của các Spring Boot service
+# và /metrics của AI Service (Python). Các target sẽ DOWN cho đến khi service
+# tương ứng được dựng (Sprint 1+).
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: thluxury-dev
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ---------- Spring Boot services (Micrometer /actuator/prometheus) ----------
+  - job_name: spring-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - api-gateway:8080
+          - identity-service:8081
+          - catalog-service:8082
+          - inventory-service:8083
+          - order-service:8084
+          - payment-service:8085
+          - notification-service:8086
+        labels:
+          stack: java
+
+  # ---------- AI Service (Python FastAPI + prometheus_fastapi_instrumentator) ----------
+  - job_name: ai-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["ai-service:8087"]
+        labels:
+          stack: python
+
+  # ---------- RabbitMQ (built-in prometheus plugin port 15692) ----------
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq:15692"]
