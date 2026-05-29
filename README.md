@@ -1,102 +1,85 @@
 # THLuxury — Microservices E-Commerce Platform
 
-> Hệ thống thương mại điện tử trang sức cao cấp, kiến trúc microservices (8 services + 2 frontend), kế thừa UI/data mẫu từ project `5TLuxury` (MERN).
+> Hệ thống thương mại điện tử trang sức cao cấp, kiến trúc microservices (8 services + 2 frontend). Dự án tập trung vào việc triển khai một hệ thống mở rộng, chịu tải tốt với đầy đủ các tính năng của một sàn TMĐT hiện đại.
 
-## 🏛️ Tài liệu kiến trúc
+## 🏗️ Kiến trúc hệ thống
 
-| File | Nội dung |
-|---|---|
-| [`docs/Đề bài.txt`](docs/Đề%20bài.txt) | Đề bài gốc + scope kiểm tra |
-| [`docs/plan.md`](docs/plan.md) | Plan tổng quan ban đầu |
-| [`docs/implementation-plan.md`](docs/implementation-plan.md) | **Plan chi tiết, implement-ready** (ADR + schema + endpoint spec + roadmap) |
+Dự án được xây dựng dựa trên mô hình Microservices với các công nghệ chính:
+- **Backend**: Java Spring Boot (Microservices), Python FastAPI (AI Service).
+- **Frontend**: Next.js 14 (Storefront), React/Vite (Admin Dashboard).
+- **Giao tiếp**: REST API, gRPC (Internal communication), RabbitMQ (Event-driven).
+- **Hạ tầng**: Docker Compose, Postgres, Redis, MailHog.
+- **Giám sát (Observability)**: Prometheus, Grafana, Loki, Promtail.
 
 ## 🧱 Cấu trúc thư mục
 
 ```
 THLuxury/
-├── 5TLuxury/             # project MERN gốc (giữ để tham chiếu UI/data)
-├── docs/                 # tài liệu
-├── infra/                # docker-compose + config Postgres/Redis/Rabbit/Mail/Observability
-│                         # (gRPC .proto nằm trong từng service: services/*/src/main/proto)
+├── infra/                # Docker-compose & cấu hình hạ tầng (Database, Message Broker, v.v.)
 ├── services/             # 8 microservices backend
 │   ├── api-gateway/       (Spring Cloud Gateway)
-│   ├── identity-service/  (Spring Boot)
-│   ├── catalog-service/   (Spring Boot + CQRS)
-│   ├── inventory-service/ (Spring Boot + gRPC)
-│   ├── order-service/     (Spring Boot + Saga + Event Sourcing)
-│   ├── payment-service/   (Spring Boot + gRPC)
-│   ├── notification-service/ (Spring Boot + RabbitMQ consumer)
-│   └── ai-service/        (Python FastAPI)
+│   ├── identity-service/  (Spring Boot - Auth & User)
+│   ├── catalog-service/   (Spring Boot + CQRS - Sản phẩm & Danh mục)
+│   ├── inventory-service/ (Spring Boot + gRPC - Kho hàng)
+│   ├── order-service/     (Spring Boot + Saga + Event Sourcing - Đơn hàng)
+│   ├── payment-service/   (Spring Boot + gRPC - Thanh toán)
+│   ├── notification-service/ (Spring Boot + RabbitMQ - Thông báo)
+│   └── ai-service/        (Python FastAPI - Chatbot thông minh)
 ├── frontend/
-│   ├── storefront/        (Next.js 14 — GUEST + CUSTOMER)
-│   └── admin/             (Vite + React — ADMIN + BRANCH_MANAGER)
-├── scripts/              # tiện ích (copy ảnh, seed, healthcheck)
-└── .github/workflows/    # CI
+│   ├── storefront/        (Next.js 14 — Giao diện cho khách hàng)
+│   └── admin/             (Vite + React — Giao diện quản trị & chi nhánh)
+├── scripts/              # Tiện ích quản lý (Seed dữ liệu, Healthcheck, Demo script)
+└── .github/workflows/    # Cấu hình CI/CD
 ```
+
+*Lưu ý: Thư mục `docs/` (tài liệu chi tiết) và `5TLuxury/` (dự án mẫu tham chiếu) đã được đưa vào `.gitignore` để bảo mật và tối ưu repository.*
 
 ## 🚀 Quickstart
 
 ```powershell
-# 1. Copy env mẫu
+# 1. Khởi tạo cấu hình môi trường
 Copy-Item infra/.env.template infra/.env
 
-# 2. (Tuỳ chọn) copy 109 ảnh sản phẩm từ 5TLuxury sang storefront/public
-./scripts/copy-images.ps1
-
-# 3. Bật hạ tầng core (postgres + redis + rabbit + mailhog)
+# 2. Bật hạ tầng core (postgres + redis + rabbit + mailhog)
 docker compose --env-file infra/.env -f infra/docker-compose.yml up -d
 
-# 3b. Bật cả observability (prometheus + grafana + loki)
+# 3. Bật toàn bộ stack bao gồm cả hệ thống giám sát
 docker compose --env-file infra/.env `
   -f infra/docker-compose.yml `
   -f infra/docker-compose.observability.yml up -d
 
-# 4. Healthcheck
+# 4. Kiểm tra trạng thái hoạt động của các service
 ./scripts/healthcheck.sh
-
-# 5. Tắt
-docker compose -f infra/docker-compose.yml down
 ```
 
-## 🌐 URL hữu ích khi stack đang chạy
+## 🌐 URL hữu ích khi hệ thống đang chạy
 
-| Dịch vụ | URL | Credentials |
+| Dịch vụ | URL | Thông tin đăng nhập |
 |---|---|---|
-| Storefront (Next.js) | http://localhost:3000 | — |
-| Admin Dashboard | http://localhost:5173 | seed accounts (xem implementation-plan §6.5) |
-| API Gateway | http://localhost:8080 | — |
-| RabbitMQ Management | http://localhost:15672 | admin / admin |
-| MailHog UI | http://localhost:8025 | — |
-| Prometheus | http://localhost:9090 | — |
-| Grafana | http://localhost:3001 | admin / admin |
-| Postgres | localhost:5432 | postgres / postgres |
+| **Storefront** | http://localhost:3000 | — |
+| **Admin Dashboard** | http://localhost:5173 | (Dùng tài khoản seed mặc định) |
+| **API Gateway** | http://localhost:8080 | — |
+| **RabbitMQ UI** | http://localhost:15672 | `admin` / `admin` |
+| **MailHog UI** | http://localhost:8025 | — |
+| **Prometheus** | http://localhost:9090 | — |
+| **Grafana** | http://localhost:3001 | `admin` / `admin` |
 
-## 📌 Trạng thái triển khai
+## 📌 Trạng thái dự án
 
-| Sprint | Phạm vi | Trạng thái |
-|---|---|---|
-| S0 | Skeleton + hạ tầng docker-compose | ✅ done |
-| S1 | Identity Service + API Gateway | ✅ done |
-| S2 | Catalog Service (CQRS) | ✅ done |
-| S3 | Inventory Service (gRPC) | ✅ done |
-| S4 | Order Service (Saga + ES, core) | ✅ done |
-| S5 | Payment Service + Saga full | ✅ done |
-| S6 | Notification Service | ✅ done |
-| S7 | AI Service | ✅ done |
-| S8 | Storefront Next.js (+ Google OAuth, quên/đặt lại mật khẩu) | ✅ done |
-| S9 | Admin Dashboard | ✅ done |
-| S10 | Observability (Prometheus/Grafana/Loki + tracing + 3 dashboard) | ✅ done |
-| S11 | Hardening (rate-limit + circuit breaker) + demo prep | ✅ done |
+Hệ thống đã hoàn thiện toàn bộ các giai đoạn phát triển chính:
+- ✅ **Backend**: Hoàn tất 8 microservices với đầy đủ logic nghiệp vụ, gRPC communication và Saga Pattern.
+- ✅ **Frontend**: Hoàn thiện Storefront (Next.js) và Admin Dashboard (React).
+- ✅ **AI Integration**: Tích hợp chatbot hỗ trợ khách hàng dựa trên FastAPI.
+- ✅ **Observability**: Thiết lập đầy đủ Dashboard giám sát trên Grafana.
+- ✅ **Hardening**: Áp dụng Rate-limiting, Circuit Breaker và tối ưu hóa hệ thống.
 
-Xem chi tiết DoD từng sprint trong [`docs/implementation-plan.md`](docs/implementation-plan.md#7-roadmap-chi-tiết-30-ngày-làm-việc).
+## 🧪 Demo & Kiểm thử
 
-## 🧪 Demo & kiểm thử API
+Để trải nghiệm toàn bộ luồng nghiệp vụ tự động (từ đăng ký, mua hàng đến kiểm tra thông báo và chat AI):
 
 ```powershell
-# Kịch bản demo end-to-end (đăng ký → mua hàng → chat AI), < 10 phút
 pwsh ./scripts/demo.ps1
 ```
 
-- **Postman**: import [`docs/THLuxury.postman_collection.json`](docs/THLuxury.postman_collection.json) — chạy `Auth > Login` trước, token tự lưu vào biến.
-- **Kiến trúc C4** (cho slide): [`docs/architecture-c4.md`](docs/architecture-c4.md).
-- **Grafana dashboards** (provisioned sẵn): *Microservices Overview*, *RabbitMQ*, *Business KPIs* tại http://localhost:3001.
+- **Hệ thống giám sát**: Truy cập Grafana (http://localhost:3001) để xem các thông số về Business KPIs, RabbitMQ throughput và tình trạng sức khỏe microservices.
+- **API Testing**: Có thể sử dụng Postman collection để test trực tiếp các endpoint thông qua API Gateway tại cổng `8080`.
